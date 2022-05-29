@@ -1,14 +1,30 @@
 '''Line sticker downloader'''
 
-
 import requests
 import sys
 import os
 import re
 import codecs
 
+continuius = True
+batch = True
 
 def main():
+    mode = input("1:Author, 2:Sticker\n")
+    if (mode == "1"):
+        while (True):
+            downloadByAuthor()
+    elif (mode == "2"):
+        while (True):
+            downloadBySticker()
+
+
+def downloadByAuthor():
+    #re.findall("^https:\/\/store\.line\.me\/stickershop\/product\/\K\d+",str)
+    pass
+
+
+def downloadBySticker():
     pack_ext = ""
 
     if len(sys.argv) > 1:
@@ -16,7 +32,9 @@ def main():
         if len(sys.argv) > 2:
             pack_ext = sys.argv[2]
     else:
-        pack_id = int(input("Enter the sticker pack ID: "))
+        inp = input("Enter the sticker pack ID or url: ")
+        ids = re.findall("\d+", inp)
+        pack_id = int(ids[0])
     pack_meta = get_pack_meta(pack_id).text
 
     name_string = """"en":"""  # folder name will take pack's English title
@@ -27,24 +45,32 @@ def main():
 
     if pack_ext == "":
         if """"hasAnimation":true""" in pack_meta:
-            if sys.version_info[0] < 3:
-                # https://stackoverflow.com/questions/31722883/python-nameerror-name-hello-is-not-defined
-                # compatibility python v2
-                pack_ext = input("\nAnimated stickers available! \n"
-                                 "Enter png, apng, or both, anything else to exit: ")  # noqa: E501
+            if not batch:
+                if sys.version_info[0] < 3:
+                    # https://stackoverflow.com/questions/31722883/python-nameerror-name-hello-is-not-defined
+                    # compatibility python v2
+                    pack_ext = input("\nAnimated stickers available! \n"
+                                     "Enter png, apng, or both, anything else to exit: ")  # noqa: E501
+                else:
+                    pack_ext = input("\nAnimated stickers available! \n"
+                                     "Enter png, apng, or both, anything else to exit: ")  # noqa: E501
             else:
-                pack_ext = input("\nAnimated stickers available! \n"
-                                 "Enter png, apng, or both, anything else to exit: ")  # noqa: E501
+                print("both")
+                pack_ext = "both"
 
         else:
-            if sys.version_info[0] < 3:
-                # https://stackoverflow.com/questions/31722883/python-nameerror-name-hello-is-not-defined
-                # compatibility python v2
-                pack_ext = input("\nOnly static stickers available! \n"
-                                 "y to download, anything else to exit: ")
+            if not batch:
+                if sys.version_info[0] < 3:
+                    # https://stackoverflow.com/questions/31722883/python-nameerror-name-hello-is-not-defined
+                    # compatibility python v2
+                    pack_ext = input("\nOnly static stickers available! \n"
+                                     "y to download, anything else to exit: ")
+                else:
+                    pack_ext = input("\nOnly static stickers available! \n"
+                                     "y to download, anything else to exit: ")
             else:
-                pack_ext = input("\nOnly static stickers available! \n"
-                                 "y to download, anything else to exit: ")
+                print("y")
+                pack_ext = "y"
 
     id_string = """"id":"""
     list_ids = []
@@ -62,37 +88,40 @@ def main():
     menu = {'apng': (get_gif,),
             'png': (get_png,),
             'y': (get_png,),
-            'both': (get_gif, get_png)}  # D'OH! Originally said tuples wouldn't work, which was strange. Thanks to doing MIT problems, I realized I used (var) instead of (var,). Former will not be considered a tuple. # noqa: E501
+            'both': (get_gif,
+                     get_png)}  # D'OH! Originally said tuples wouldn't work, which was strange. Thanks to doing MIT problems, I realized I used (var) instead of (var,). Former will not be considered a tuple. # noqa: E501
     if pack_ext in menu:
         for choice in menu[pack_ext]:
             choice(pack_id, list_ids, pack_name)
     else:
         print("Nothing done. Program exiting...")
-        sys.exit()
+        if not continuius:
+            sys.exit()
 
     print("\nDone! Program exiting...")
-
-    sys.exit()
+    if not continuius:
+        sys.exit()
 
 
 def get_pack_name(name_string, pack_meta):
     start_index = pack_meta.find(name_string)
     end_index = pack_meta.find(',', start_index + 1)
-    sticker_name = pack_meta[start_index+len(name_string)+1:end_index-1]  # lower bound needs +1 to exclude the beginning " mark. -1 to make upper bound the , which is excluded from the range # noqa: E501
+    sticker_name = pack_meta[start_index + len(
+        name_string) + 1:end_index - 1]  # lower bound needs +1 to exclude the beginning " mark. -1 to make upper bound the , which is excluded from the range # noqa: E501
     return sticker_name
 
 
 def get_ids(id_string, pack_meta):
     start_index = pack_meta.find(id_string)
     end_index = pack_meta.find(",", start_index + 1)
-    sticker_id = pack_meta[start_index+len(id_string):end_index]
+    sticker_id = pack_meta[start_index + len(id_string):end_index]
     return start_index, sticker_id, pack_meta[end_index:]
 
 
 def validate_savepath(pack_name):
     decoded_name = decode_escapes(pack_name)
     save_name = "".join(i for i in decoded_name if i not in r'\/:*?"<>|')
-
+    save_name = os.path.join("download/", save_name)
     # python version selection
     if sys.version_info[0] < 3:
         # https://github.com/bamos/dcgan-completion.tensorflow/issues/20
@@ -103,7 +132,8 @@ def validate_savepath(pack_name):
             print("Skipping creation of %s because it exists already." % str(save_name))  # noqa: E501
     else:
         # python version >= 3
-        os.makedirs(str(save_name), exist_ok=True)  # exist_ok = True doesn't raise exception if directory exists. Files already in directory are not erased # noqa: E501
+        os.makedirs(str(save_name),
+                    exist_ok=True)  # exist_ok = True doesn't raise exception if directory exists. Files already in directory are not erased # noqa: E501
 
     return save_name
 
@@ -114,7 +144,8 @@ def get_gif(pack_id, list_ids, pack_name):
         # save_path = os.path.join(str(pack_name), str(x) + '.gif')
         save_path = os.path.join(str(pack_name), str(x) + '.apng')
         # url = 'http://lstk.ddns.net/animg/{}.gif'.format(x)
-        url = 'https://sdl-stickershop.line.naver.jp/products/0/0/1/{}/iphone/animation/{}@2x.png'.format(pack_id, x)  # noqa: E501
+        url = 'https://sdl-stickershop.line.naver.jp/products/0/0/1/{}/iphone/animation/{}@2x.png'.format(pack_id,
+                                                                                                          x)  # noqa: E501
         image = requests.get(url, stream=True)
         with open(save_path, 'wb') as f:
             for chunk in image.iter_content(chunk_size=10240):
@@ -126,17 +157,19 @@ def get_png(pack_id, list_ids, pack_name):
     pack_name = validate_savepath(pack_name)
     for x in list_ids:
         save_path = os.path.join(str(pack_name), str(x) + '.png')
-        url = 'http://dl.stickershop.line.naver.jp/stickershop/v1/sticker/{}/iphone/sticker@2x.png'.format(x)  # noqa: E501
+        url = 'http://dl.stickershop.line.naver.jp/stickershop/v1/sticker/{}/iphone/sticker@2x.png'.format(
+            x)  # noqa: E501
         image = requests.get(url, stream=True)
-        with open(save_path, 'wb') as f:  # http://stackoverflow.com/questions/16694907/how-to-download-large-file-in-python-with-requests-py Understood! with construct is a fancy way of try/catch that cleans up, even with exceptions thrown  # noqa: E501
+        with open(save_path,
+                  'wb') as f:  # http://stackoverflow.com/questions/16694907/how-to-download-large-file-in-python-with-requests-py Understood! with construct is a fancy way of try/catch that cleans up, even with exceptions thrown  # noqa: E501
             for chunk in image.iter_content(chunk_size=10240):  # chunk_size is in bytes # noqa: E501
                 if chunk:
                     f.write(chunk)
 
 
 def get_pack_meta(pack_id):
-
-    pack_url = "http://dl.stickershop.line.naver.jp/products/0/0/1/{}/android/productInfo.meta".format(pack_id)  # noqa: E501
+    pack_url = "http://dl.stickershop.line.naver.jp/products/0/0/1/{}/android/productInfo.meta".format(
+        pack_id)  # noqa: E501
     pack_meta = requests.get(pack_url)
 
     # http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html Status codes
@@ -145,8 +178,10 @@ def get_pack_meta(pack_id):
     if pack_meta.status_code == 200:
         return pack_meta
     else:
-        print("{} did not return 200 status code, possibly invalid sticker ID. Program exiting...".format(pack_id))  # noqa: E501
-        sys.exit()
+        print("{} did not return 200 status code, possibly invalid sticker ID. Program exiting...".format(
+            pack_id))  # noqa: E501
+        if not continuius:
+            sys.exit()
 
 
 unicode_sanitizer = re.compile(r'''  # compile pattern into object, use with match()
@@ -156,18 +191,19 @@ unicode_sanitizer = re.compile(r'''  # compile pattern into object, use with mat
     | \\[0-7]{1,3}     # Octal escapes, bksl followed by 1 to 3 numbers within range of 0-7  # noqa: E501
     | \\N\{[^}]+\}     # Unicode characters by name, uses name index
     | \\[\\'"abfnrtv]  # Single-character escapes, e.g. tab, backspace, quotes
-    )''', re.VERBOSE)  # re.UNICODE not necessary in Py3, matches Unicode by default. re.VERBOSE allows separated sections  # noqa: E501
+    )''',
+                               re.VERBOSE)  # re.UNICODE not necessary in Py3, matches Unicode by default. re.VERBOSE allows separated sections  # noqa: E501
 
 
 def decode_escapes(orig):
     def decode_match(match):
         return codecs.decode(match.group(0), 'unicode-escape')
+
     return unicode_sanitizer.sub(decode_match, orig)  # sub returns string with replaced patterns  # noqa: E501
 
 
 if __name__ == '__main__':
     main()
-
 
 '''
 [1] http://stackoverflow.com/questions/11435331/python-requests-and-unicode
